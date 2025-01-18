@@ -28,6 +28,7 @@ see https://www.gnu.org/licenses/. */
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
@@ -76,6 +77,20 @@ void reksum(std::vector<std::vector<double>> &retval, const std::vector<pop_size
     }
 }
 
+using fnds_function_pointer_t = std::add_pointer_t<fnds_return_type(std::span<vector_double const>)>;
+
+static const std::array<fnds_function_pointer_t, 9> algorithm_dispatch{
+    &best_order_sorting,
+    &deductive_sorting,
+    &efficient_sorting_binary,
+    &efficient_sorting_sequential,
+    &hierarchical_sorting,
+    &merge_sorting,
+    &fast_non_dominated_sorting,
+    &rank_intersect_sorting,
+    &rank_ordinal_sorting
+};
+
 } // namespace detail
 
 /// Pareto-dominance
@@ -112,148 +127,81 @@ bool pareto_dominance(const vector_double &obj1, const vector_double &obj2)
     return found_strictly_dominating_dimension;
 }
 
-/// Non dominated front 2D (Kung's algorithm)
-/**
- * Finds the non dominated front of a set of two dimensional objectives. Complexity is O(N logN) and is thus lower than
- * the
- * complexity of calling pagmo::fast_non_dominated_sorting
- *
- * See: Jensen, Mikkel T. "Reducing the run-time complexity of multiobjective EAs: The NSGA-II and other algorithms."
- * IEEE Transactions on Evolutionary Computation 7.5 (2003): 503-515.
- *
- * @param input_objs an <tt>std::vector</tt> containing the points (i.e. vector of objectives)
- *
- * @return A <tt>std::vector</tt> containing the indexes of the points in the non-dominated front
- *
- * @throws std::invalid_argument If the objective vectors are not all containing two-objectives
- */
-std::vector<pop_size_t> non_dominated_front_2d(const std::vector<vector_double> &input_objs)
+/// non-dominated sorting wrapper with duplicates handling
+PAGMO_DLL_PUBLIC fnds_return_type non_dominated_sorting(std::span<vector_double const> points,
+                                                        non_dominated_sorting_algorithm_type alg, bool dominate_on_equal)
 {
-    // If the input is empty return an empty vector
-    if (input_objs.size() == 0u) {
-        return {};
+    if (alg < non_dominated_sorting_algorithm_type::best_order_sort || alg > non_dominated_sorting_algorithm_type::rank_ordinal_sort) {
+        pagmo_throw(std::invalid_argument, "unknown algorithm enum value: " + std::to_string(static_cast<int>(alg)));
     }
-    // How many objectives? M, of course.
-    auto M = input_objs[0].size();
-    // We make sure all input_objs contain M objectives
-    if (!std::all_of(input_objs.begin(), input_objs.end(),
-                     [M](const vector_double &item) { return item.size() == M; })) {
-        pagmo_throw(std::invalid_argument, "Input contains vector of objectives with heterogeneous dimensionalities");
-    }
-    // We make sure this function is only requested for two objectives.
-    if (M != 2u) {
-        pagmo_throw(std::invalid_argument, "The number of objectives detected is " + std::to_string(M)
-                                               + ", while Kung's algorithm only works for two objectives.");
-    }
-    // Sanity checks are over. We may run Kung's algorithm.
-    std::vector<pop_size_t> front;
-    std::vector<pop_size_t> indexes(input_objs.size());
-    std::iota(indexes.begin(), indexes.end(), pop_size_t(0u));
-    // Sort in ascending order with respect to the first component
-    std::sort(indexes.begin(), indexes.end(), [&input_objs](pop_size_t idx1, pop_size_t idx2) {
-        if (detail::equal_to_f(input_objs[idx1][0], input_objs[idx2][0])) {
-            return detail::less_than_f(input_objs[idx1][1], input_objs[idx2][1]);
-        }
-        return detail::less_than_f(input_objs[idx1][0], input_objs[idx2][0]);
-    });
-    for (auto i : indexes) {
-        bool flag = false;
-        for (auto j : front) {
-            if (pareto_dominance(input_objs[j], input_objs[i])) {
-                flag = true;
-                break;
-            }
-        }
-        if (!flag) {
-            front.push_back(i);
-        }
-    }
-    return front;
-}
 
-/// Fast non dominated sorting
-/**
- * An implementation of the fast non dominated sorting algorithm. Complexity is \f$ O(MN^2)\f$ where \f$M\f$ is the
- * number of objectives
- * and \f$N\f$ is the number of individuals.
- *
- * See: Deb, Kalyanmoy, et al. "A fast elitist non-dominated sorting genetic algorithm
- * for multi-objective optimization: NSGA-II." Parallel problem solving from nature PPSN VI. Springer Berlin Heidelberg,
- * 2000.
- *
- * @param points An std::vector containing the objectives of different individuals. Example
- * {{1,2,3},{-2,3,7},{-1,-2,-3},{0,0,0}}
- *
- * @return an std::tuple containing:
- *  - the non dominated fronts, an <tt>std::vector<std::vector<pop_size_t>></tt>
- * containing the non dominated fronts. Example {{1,2},{3},{0}}
- *  - the domination list, an <tt>std::vector<std::vector<pop_size_t>></tt>
- * containing the domination list, i.e. the indexes of all individuals
- * dominated by the individual at position \f$i\f$. Example {{},{},{0,3},{0}}
- *  - the domination count, an <tt>std::vector<pop_size_t></tt> containing the number of individuals
- * that dominate the individual at position \f$i\f$. Example {2, 0, 0, 1}
- *  - the non domination rank, an <tt>std::vector<pop_size_t></tt> containing the index of the non
- * dominated front to which the individual at position \f$i\f$ belongs. Example {2,0,0,1}
- *
- * @throws std::invalid_argument If the size of \p points is not at least 2
- */
-fnds_return_type fast_non_dominated_sorting(const std::vector<vector_double> &points)
-{
-    auto N = points.size();
-    // We make sure to have two points at least (one could also be allowed)
-    if (N < 2u) {
-        pagmo_throw(std::invalid_argument, "At least two points are needed for fast_non_dominated_sorting: "
-                                               + std::to_string(N) + " detected.");
-    }
-    // Initialize the return values
-    std::vector<std::vector<pop_size_t>> non_dom_fronts(1u);
-    std::vector<std::vector<pop_size_t>> dom_list(N);
-    std::vector<pop_size_t> dom_count(N);
-    std::vector<pop_size_t> non_dom_rank(N);
+    // handle duplicates
+    // step 1: lexicographical sorting
+    auto const n{ std::ssize(points) };
 
-    // Start the fast non dominated sort algorithm
-    for (decltype(N) i = 0u; i < N; ++i) {
-        dom_list[i].clear();
-        dom_count[i] = 0u;
-        for (decltype(N) j = 0u; j < i; ++j) {
-            if (pareto_dominance(points[i], points[j])) {
-                dom_list[i].push_back(j);
-                ++dom_count[j];
-            } else if (pareto_dominance(points[j], points[i])) {
-                dom_list[j].push_back(i);
-                ++dom_count[i];
-            }
+    std::vector<int> indices(n);
+    std::iota(indices.begin(), indices.end(), 0ul);
+
+    auto compare = [&](auto i, auto j) {
+        return std::ranges::lexicographical_compare(points[i], points[j], std::ref(detail::less_than_f<vector_double::value_type>));
+    };
+
+    std::ranges::stable_sort(indices, compare);
+
+    std::unordered_map<int, int> duplicates;
+    std::vector<int> counts(n, 0);
+
+    auto equal = [](auto const& a, auto const& b) { return std::ranges::equal(a, b, std::ref(detail::equal_to_f<vector_double::value_type>)); };
+
+    std::vector<int> unique;
+    unique.reserve(n);
+
+    for (auto i = indices.begin(); i < indices.end(); ) {
+        unique.push_back(*i);
+        auto const& a = points[*i];
+        auto j = i+1;
+        for (; j < indices.end(); ++j) {
+            auto const& b = points[*j];
+            if (!equal(a, b)) { break; }
+            duplicates[*j] = *i;
+            counts[*i] += 1;
         }
+        i = j;
     }
-    for (decltype(N) i = 0u; i < N; ++i) {
-        if (dom_count[i] == 0u) {
-            non_dom_rank[i] = 0u;
-            non_dom_fronts[0].push_back(i);
-        }
+    std::cout << "unique size: " << unique.size() << "\n";
+    std::vector<vector_double> pop;
+    pop.reserve(unique.size());
+
+    std::ranges::transform(unique, std::back_inserter(pop), [&](auto i){ return points[i]; });
+    fnds_return_type ret = pop.size() > 1
+        ? detail::algorithm_dispatch[static_cast<int>(alg)](pop)
+        : fnds_return_type{ std::vector<std::vector<pop_size_t>>{0UL}, {}, {}, {0UL} };
+
+    auto const& [ non_dom_fronts, dom_list, dom_count, non_dom_rank ] = ret;
+    std::vector<pop_size_t> rank(n, 0);
+
+    for (auto i = 0; i < unique.size(); ++i) {
+        auto j = unique[i];
+        rank[j] = non_dom_rank[i];
     }
-    // we copy dom_count as we want to output its value at this point
-    auto dom_count_copy(dom_count);
-    auto current_front = non_dom_fronts[0];
-    std::vector<std::vector<pop_size_t>>::size_type front_counter(0u);
-    while (current_front.size() != 0u) {
-        std::vector<pop_size_t> next_front;
-        for (decltype(current_front.size()) p = 0u; p < current_front.size(); ++p) {
-            for (decltype(dom_list[current_front[p]].size()) q = 0u; q < dom_list[current_front[p]].size(); ++q) {
-                --dom_count_copy[dom_list[current_front[p]][q]];
-                if (dom_count_copy[dom_list[current_front[p]][q]] == 0u) {
-                    non_dom_rank[dom_list[current_front[p]][q]] = front_counter + 1u;
-                    next_front.push_back(dom_list[current_front[p]][q]);
-                }
-            }
-        }
-        ++front_counter;
-        current_front = next_front;
-        if (current_front.size() != 0u) {
-            non_dom_fronts.push_back(current_front);
-        }
+
+    for (auto [i, j]: duplicates) {
+        rank[i] = rank[j] + (dominate_on_equal ? counts[j]-- : 0);
     }
-    return std::make_tuple(std::move(non_dom_fronts), std::move(dom_list), std::move(dom_count),
-                           std::move(non_dom_rank));
+
+    auto rank_max = *std::ranges::max_element(rank) + 1;
+    std::vector<std::vector<pop_size_t>> fronts(rank_max);
+
+    for (auto i : indices) {
+        fronts[rank[i]].push_back(i);
+    }
+
+    // sort fronts to ensure determinism
+    for (auto& f : fronts) {
+        assert(!f.empty());
+        std::ranges::stable_sort(f);
+    }
+    return { std::move(fronts), {}, {}, std::move(rank) };
 }
 
 /// Crowding distance
@@ -277,7 +225,7 @@ fnds_return_type fast_non_dominated_sorting(const std::vector<vector_double> &po
  * @throws std::invalid_argument If points in \p do not all have at least two objectives
  * @throws std::invalid_argument If points in \p non_dom_front do not all have the same dimensionality
  */
-vector_double crowding_distance(const std::vector<vector_double> &non_dom_front)
+vector_double crowding_distance(std::span<vector_double const> non_dom_front)
 {
     auto N = non_dom_front.size();
     // We make sure to have two points at least
@@ -341,7 +289,7 @@ vector_double crowding_distance(const std::vector<vector_double> &non_dom_front)
  *
  * @throws unspecified all exceptions thrown by pagmo::fast_non_dominated_sorting and pagmo::crowding_distance
  */
-std::vector<pop_size_t> select_best_N_mo(const std::vector<vector_double> &input_f, pop_size_t N)
+std::vector<pop_size_t> select_best_N_mo(std::span<vector_double const>input_f, pop_size_t N, non_dominated_sorting_algorithm_type nds_alg)
 {
     if (N == 0u) { // corner case
         return {};
@@ -360,7 +308,7 @@ std::vector<pop_size_t> select_best_N_mo(const std::vector<vector_double> &input
     std::vector<pop_size_t> retval;
     std::vector<pop_size_t>::size_type front_id(0u);
     // Run fast-non-dominated sorting
-    auto tuple = fast_non_dominated_sorting(input_f);
+    auto tuple = non_dominated_sorting(input_f, nds_alg);
     // Insert all non dominated fronts if not more than N
     for (const auto &front : std::get<0>(tuple)) {
         if (retval.size() + front.size() <= N) {
@@ -422,7 +370,7 @@ std::vector<pop_size_t> select_best_N_mo(const std::vector<vector_double> &input
  *
  * @throws unspecified all exceptions thrown by pagmo::fast_non_dominated_sorting and pagmo::crowding_distance
  */
-std::vector<pop_size_t> sort_population_mo(const std::vector<vector_double> &input_f)
+std::vector<pop_size_t> sort_population_mo(std::span<vector_double const>input_f)
 {
     if (input_f.size() < 2u) { // corner cases
         if (input_f.size() == 0u) {
@@ -477,7 +425,7 @@ std::vector<pop_size_t> sort_population_mo(const std::vector<vector_double> &inp
  *
  * @throws std::invalid_argument if the input objective vectors are not all of the same size
  */
-vector_double ideal(const std::vector<vector_double> &points)
+vector_double ideal(std::span<vector_double const>points)
 {
     // Corner case
     if (points.size() == 0u) {
@@ -516,7 +464,7 @@ vector_double ideal(const std::vector<vector_double> &points)
  * @returns A vector_double containing the nadir point. Example: {10,7}
  *
  */
-vector_double nadir(const std::vector<vector_double> &points)
+vector_double nadir(std::span<vector_double const>points)
 {
     // Corner case
     if (points.size() == 0u) {

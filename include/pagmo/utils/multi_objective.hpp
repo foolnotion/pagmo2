@@ -37,6 +37,7 @@ see https://www.gnu.org/licenses/. */
 #include <string>
 #include <tuple>
 #include <vector>
+#include <span>
 
 #include <boost/numeric/conversion/cast.hpp>
 
@@ -48,6 +49,21 @@ see https://www.gnu.org/licenses/. */
 
 namespace pagmo
 {
+enum class non_dominated_sorting_algorithm_type {
+    best_order_sort,           // best order sort
+    deductive_sort,            // deductive sort
+    efficient_sort_binary,     // binary efficient non-dominated sort
+    efficient_sort_sequential, // sequential efficient non-dominated sort
+    hierarchical_sort,         // hierarchical sort
+    merge_sort,                // merge non-dominated sort
+    deb_sort,                  // fast non-dominated sort
+    rank_intersect_sort,       // rank intersect sort
+    rank_ordinal_sort          // rank ordinal sort
+};
+
+static std::array<std::string, 9> non_dominated_sorting_algorithm_name {
+    "bos", "ds", "esb", "ess", "hs", "ms", "deb", "rs", "ro"
+};
 
 namespace detail
 {
@@ -58,33 +74,66 @@ PAGMO_DLL_PUBLIC void reksum(std::vector<std::vector<double>> &, const std::vect
 
 } // namespace detail
 
-// Pareto-dominance
-PAGMO_DLL_PUBLIC bool pareto_dominance(const vector_double &, const vector_double &);
-
-// Non dominated front 2D (Kung's algorithm)
-PAGMO_DLL_PUBLIC std::vector<pop_size_t> non_dominated_front_2d(const std::vector<vector_double> &);
-
 /// Return type for the fast_non_dominated_sorting algorithm
 using fnds_return_type = std::tuple<std::vector<std::vector<pop_size_t>>, std::vector<std::vector<pop_size_t>>,
                                     std::vector<pop_size_t>, std::vector<pop_size_t>>;
 
 // Fast non dominated sorting
-PAGMO_DLL_PUBLIC fnds_return_type fast_non_dominated_sorting(const std::vector<vector_double> &);
+PAGMO_DLL_PUBLIC fnds_return_type fast_non_dominated_sorting(std::span<vector_double const>);
+
+// Wrapper method which is parameterized with the concrete sorting algorithm to use and a duplicates-handling strategy
+PAGMO_DLL_PUBLIC fnds_return_type non_dominated_sorting(std::span<vector_double const>, non_dominated_sorting_algorithm_type, bool = false /* dominate on equal */);
+
+// Pareto-dominance
+PAGMO_DLL_PUBLIC bool pareto_dominance(const vector_double &, const vector_double &);
+
+// Non dominated front 2D (Kung's algorithm)
+PAGMO_DLL_PUBLIC std::vector<pop_size_t> non_dominated_front_2d(std::span<vector_double const>);
+inline PAGMO_DLL_PUBLIC std::vector<pop_size_t> non_dominated_front_2d(std::vector<vector_double> const& points) {
+    return non_dominated_front_2d(std::span<vector_double const>{points.data(), points.size()});
+}
+
+// Fast non dominated sorting
+PAGMO_DLL_PUBLIC fnds_return_type fast_non_dominated_sorting(std::span<vector_double const>);
+
+// Best order sorting
+PAGMO_DLL_PUBLIC fnds_return_type best_order_sorting(std::span<vector_double const>);
+
+// Deductive sorting
+PAGMO_DLL_PUBLIC fnds_return_type deductive_sorting(std::span<vector_double const>);
+
+// Hierarchical sorting
+PAGMO_DLL_PUBLIC fnds_return_type hierarchical_sorting(std::span<vector_double const>);
+
+// Efficient sorting (binary)
+PAGMO_DLL_PUBLIC fnds_return_type efficient_sorting_binary(std::span<vector_double const>);
+
+// Efficient sorting (sequential)
+PAGMO_DLL_PUBLIC fnds_return_type efficient_sorting_sequential(std::span<vector_double const>);
+
+// Merge non-dominated sorting
+PAGMO_DLL_PUBLIC fnds_return_type merge_sorting(std::span<vector_double const>);
+
+// Rank intersect non-dominated sorting
+PAGMO_DLL_PUBLIC fnds_return_type rank_intersect_sorting(std::span<vector_double const>);
+
+// Rank ordinal non-dominated sorting
+PAGMO_DLL_PUBLIC fnds_return_type rank_ordinal_sorting(std::span<vector_double const>);
 
 // Crowding distance
-PAGMO_DLL_PUBLIC vector_double crowding_distance(const std::vector<vector_double> &);
+PAGMO_DLL_PUBLIC vector_double crowding_distance(std::span<vector_double const>);
 
 // Sorts a population in multi-objective optimization
-PAGMO_DLL_PUBLIC std::vector<pop_size_t> sort_population_mo(const std::vector<vector_double> &);
+PAGMO_DLL_PUBLIC std::vector<pop_size_t> sort_population_mo(std::span<vector_double const>);
 
 // Selects the best N individuals in multi-objective optimization
-PAGMO_DLL_PUBLIC std::vector<pop_size_t> select_best_N_mo(const std::vector<vector_double> &, pop_size_t);
+PAGMO_DLL_PUBLIC std::vector<pop_size_t> select_best_N_mo(std::span<vector_double const>, pop_size_t, non_dominated_sorting_algorithm_type nds_alg = non_dominated_sorting_algorithm_type::deb_sort);
 
 // Ideal point
-PAGMO_DLL_PUBLIC vector_double ideal(const std::vector<vector_double> &);
+PAGMO_DLL_PUBLIC vector_double ideal(std::span<vector_double const>);
 
 // Nadir point
-PAGMO_DLL_PUBLIC vector_double nadir(const std::vector<vector_double> &);
+PAGMO_DLL_PUBLIC vector_double nadir(std::span<vector_double const>);
 
 /// Decomposition weights generation
 /**

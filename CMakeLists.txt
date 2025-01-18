@@ -201,6 +201,16 @@ endif()
 # Boost setup.
 include(PagmoFindBoost)
 
+# Extra dependencies for non-dominated sorting
+find_package(cpp-sort REQUIRED)
+find_package(eve REQUIRED)
+find_package(scn REQUIRED)
+
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
+if(CMAKE_EXPORT_COMPILE_COMMANDS)
+    set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+endif()
+
 # List of source files.
 set(PAGMO_SRC_FILES
     # Core classes.
@@ -293,6 +303,15 @@ set(PAGMO_SRC_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/hv_algos/hv_hv2d.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/hv_algos/hv_hv3d.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/hv_algos/hv_hvwfg.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/nds_algos/best_order_sort.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/nds_algos/deb_nds.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/nds_algos/deductive_sort.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/nds_algos/efficient_sort.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/nds_algos/hierarchical_sort.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/nds_algos/kung_2d.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/nds_algos/merge_sort.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/nds_algos/rank_intersect.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/utils/nds_algos/rank_ordinal.cpp"
     # Detail.
     "${CMAKE_CURRENT_SOURCE_DIR}/src/detail/base_sr_policy.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/detail/bfe_impl.cpp"
@@ -354,10 +373,10 @@ target_compile_options(pagmo PRIVATE
     "$<$<CONFIG:MinSizeRel>:${PAGMO_CXX_FLAGS_RELEASE}>"
 )
 
-# Set the minimum C++ standard to C++17, both when building
+# Set the minimum C++ standard to C++20, both when building
 # and consuming pagmo.
-target_compile_features(pagmo PUBLIC cxx_std_17)
-# Enforce vanilla C++17 when compiling pagmo.
+target_compile_features(pagmo PUBLIC cxx_std_20)
+# Enforce vanilla C++20 when compiling pagmo.
 set_property(TARGET pagmo PROPERTY CXX_EXTENSIONS NO)
 # NOTE: make sure the include directories from the current build
 # are included first, so that if there is already a pagmo installation
@@ -385,7 +404,7 @@ endif()
 target_link_libraries(pagmo PUBLIC Threads::Threads)
 
 # Boost.
-target_link_libraries(pagmo PUBLIC Boost::boost Boost::serialization)
+target_link_libraries(pagmo PUBLIC Boost::boost Boost::serialization scn::scn)
 # NOTE: quench warnings from Boost when building the library.
 target_compile_definitions(pagmo PRIVATE BOOST_ALLOW_DEPRECATED_HEADERS)
 
@@ -393,7 +412,7 @@ target_compile_definitions(pagmo PRIVATE BOOST_ALLOW_DEPRECATED_HEADERS)
 # NOTE: TBB is a private dependency because
 # all uses of TBB are limited to the .cpp files,
 # thus fully encapsulated in the pagmo library.
-target_link_libraries(pagmo PRIVATE TBB::tbb)
+target_link_libraries(pagmo PRIVATE TBB::tbb eve::eve cpp-sort::cpp-sort)
 
 if(PAGMO_WITH_EIGEN3)
     # Link pagmo to eigen3.
@@ -470,6 +489,7 @@ install(TARGETS pagmo
 # Setup of the optional deps.
 set(_PAGMO_CONFIG_OPTIONAL_DEPS)
 if(PAGMO_WITH_EIGEN3)
+    target_compile_definitions(pagmo PRIVATE "PAGMO_WITH_EIGEN3")
 	set(_PAGMO_CONFIG_OPTIONAL_DEPS "${_PAGMO_CONFIG_OPTIONAL_DEPS}find_package(Eigen3 3.3 QUIET REQUIRED NO_MODULE)\n")
 endif()
 if(PAGMO_WITH_NLOPT)

@@ -29,6 +29,7 @@ see https://www.gnu.org/licenses/. */
 #ifndef PAGMO_ALGORITHMS_NSGA2_HPP
 #define PAGMO_ALGORITHMS_NSGA2_HPP
 
+#include "pagmo/utils/multi_objective.hpp"
 #include <string>
 #include <tuple>
 #include <vector>
@@ -82,7 +83,7 @@ public:
      * [1,100[ or \p eta_m is not in [1,100[.
      */
     nsga2(unsigned gen = 1u, double cr = 0.95, double eta_c = 10., double m = 0.01, double eta_m = 50.,
-          unsigned seed = pagmo::random_device::next());
+          unsigned seed = pagmo::random_device::next(), non_dominated_sorting_algorithm_type nds_algo = non_dominated_sorting_algorithm_type::rank_intersect_sort);
 
     // Algorithm evolve method
     population evolve(population) const;
@@ -180,6 +181,7 @@ private:
     double m_m;
     double m_eta_m;
     mutable detail::random_engine_type m_e;
+    non_dominated_sorting_algorithm_type m_sorting_algorithm;
     unsigned m_seed;
     unsigned m_verbosity;
     mutable log_type m_log;

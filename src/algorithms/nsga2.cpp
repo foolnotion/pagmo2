@@ -38,6 +38,7 @@ see https://www.gnu.org/licenses/. */
 #include <tuple>
 #include <utility>
 #include <vector>
+#include <fstream>
 
 #include <pagmo/algorithm.hpp>
 #include <pagmo/algorithms/nsga2.hpp>
@@ -57,8 +58,8 @@ see https://www.gnu.org/licenses/. */
 namespace pagmo
 {
 
-nsga2::nsga2(unsigned gen, double cr, double eta_c, double m, double eta_m, unsigned seed)
-    : m_gen(gen), m_cr(cr), m_eta_c(eta_c), m_m(m), m_eta_m(eta_m), m_e(seed), m_seed(seed), m_verbosity(0u)
+nsga2::nsga2(unsigned gen, double cr, double eta_c, double m, double eta_m, unsigned seed, non_dominated_sorting_algorithm_type nds_algo)
+    : m_gen(gen), m_cr(cr), m_eta_c(eta_c), m_m(m), m_eta_m(eta_m), m_e(seed), m_seed(seed), m_sorting_algorithm(nds_algo), m_verbosity(0u)
 {
     if (cr >= 1. || cr < 0.) {
         pagmo_throw(std::invalid_argument, "The crossover probability must be in the [0,1[ range, while a value of "
@@ -180,9 +181,23 @@ population nsga2::evolve(population pop) const
         std::shuffle(shuffle1.begin(), shuffle1.end(), m_e);
         std::shuffle(shuffle2.begin(), shuffle2.end(), m_e);
 
+        // output the population values
+        if (false) {
+            auto const& f = pop.get_f();
+            constexpr auto precision = std::numeric_limits<double>::max_digits10;
+            std::ofstream fs("./tmp/nsga2_" + prob.get_name() + "_" + std::to_string(pop.size()) + "_" + std::to_string(f[0].size()) + "_" + non_dominated_sorting_algorithm_name[(int)m_sorting_algorithm] + ".csv", std::ios_base::app);
+            for (auto const& fvec : f) {
+                for (auto v : fvec) {
+                    fs << std::setprecision(15) << v << ",";
+                }
+            }
+            fs << "\n";
+        }
+
         // 1 - We compute crowding distance and non dominated rank for the current population
-        auto fnds_res = fast_non_dominated_sorting(pop.get_f());
+        auto fnds_res = non_dominated_sorting(pop.get_f(), m_sorting_algorithm, true);
         auto ndf = std::get<0>(fnds_res); // non dominated fronts [[0,3,2],[1,5,6],[4],...]
+        std::cout << "number of fronts: " << ndf.size() << "\n";
         vector_double pop_cd(NP);         // crowding distances of the whole population
         auto ndr = std::get<3>(fnds_res); // non domination rank [0,1,0,0,2,1,1, ... ]
         for (const auto &front_idxs : ndf) {
@@ -297,7 +312,7 @@ population nsga2::evolve(population pop) const
         }
         // This method returns the sorted N best individuals in the population according to the crowded comparison
         // operator
-        best_idx = select_best_N_mo(popnew.get_f(), NP);
+        best_idx = select_best_N_mo(popnew.get_f(), NP, m_sorting_algorithm);
         // We insert into the population
         for (population::size_type i = 0; i < NP; ++i) {
             pop.set_xf(i, popnew.get_x()[best_idx[i]], popnew.get_f()[best_idx[i]]);

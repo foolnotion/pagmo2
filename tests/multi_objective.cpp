@@ -34,10 +34,14 @@ see https://www.gnu.org/licenses/. */
 #include <random>
 #include <stdexcept>
 #include <tuple>
+#include <fstream>
 
 #include <pagmo/io.hpp>
 #include <pagmo/types.hpp>
 #include <pagmo/utils/multi_objective.hpp>
+
+#include <ranges>
+#include <filesystem>
 
 using namespace pagmo;
 
@@ -56,7 +60,7 @@ BOOST_AUTO_TEST_CASE(pareto_dominance_test)
 BOOST_AUTO_TEST_CASE(non_dominated_front_2d_test)
 {
     // Corner cases
-    BOOST_CHECK(non_dominated_front_2d({}) == std::vector<vector_double::size_type>{});
+    BOOST_CHECK(non_dominated_front_2d(std::vector<vector_double>{}) == std::vector<vector_double::size_type>{});
     // We test some known cases
     {
         auto res = non_dominated_front_2d({{0, 1}, {1, 1}, {1, 2}});
@@ -105,6 +109,14 @@ BOOST_AUTO_TEST_CASE(fast_non_dominated_sorting_test)
     BOOST_CHECK(std::get<2>(retval) == dom_count_res);
     BOOST_CHECK(std::get<3>(retval) == non_dom_rank_res);
 
+    retval = merge_sorting(example);
+    BOOST_CHECK(std::get<0>(retval) == non_dom_fronts_res);
+    BOOST_CHECK(std::get<3>(retval) == non_dom_rank_res);
+
+       retval = rank_intersect_sorting(example);
+    BOOST_CHECK(std::get<0>(retval) == non_dom_fronts_res);
+    BOOST_CHECK(std::get<3>(retval) == non_dom_rank_res);
+
     // Test 2
     example = {{1, 2, 3}, {-2, 3, 7}, {-1, -2, -3}, {0, 0, 0}};
     non_dom_fronts_res = {{1, 2}, {3}, {0}};
@@ -118,12 +130,28 @@ BOOST_AUTO_TEST_CASE(fast_non_dominated_sorting_test)
     BOOST_CHECK(std::get<2>(retval) == dom_count_res);
     BOOST_CHECK(std::get<3>(retval) == non_dom_rank_res);
 
+    retval = merge_sorting(example);
+    BOOST_CHECK(std::get<0>(retval) == non_dom_fronts_res);
+    BOOST_CHECK(std::get<3>(retval) == non_dom_rank_res);
+
+    retval = rank_intersect_sorting(example);
+    BOOST_CHECK(std::get<0>(retval) == non_dom_fronts_res);
+    BOOST_CHECK(std::get<3>(retval) == non_dom_rank_res);
+
     // Test 3
     example = {{}, {}, {}, {}};
     non_dom_fronts_res = {{0, 1, 2, 3}};
     dom_count_res = {0, 0, 0, 0};
     dom_list_res = {{}, {}, {}, {}};
     non_dom_rank_res = {0, 0, 0, 0};
+
+    retval = merge_sorting(example);
+    BOOST_CHECK(std::get<0>(retval) == non_dom_fronts_res);
+    BOOST_CHECK(std::get<3>(retval) == non_dom_rank_res);
+
+    retval = rank_intersect_sorting(example);
+    BOOST_CHECK(std::get<0>(retval) == non_dom_fronts_res);
+    BOOST_CHECK(std::get<3>(retval) == non_dom_rank_res);
 
     retval = fast_non_dominated_sorting(example);
     BOOST_CHECK(std::get<0>(retval) == non_dom_fronts_res);
@@ -409,4 +437,39 @@ BOOST_AUTO_TEST_CASE(decompose_objectives_test)
     BOOST_CHECK_THROW(decompose_objectives(f, weight, {1.}, "weighted"), std::invalid_argument);
     BOOST_CHECK_THROW(decompose_objectives(f, weight, ref_point, "pippo"), std::invalid_argument);
     BOOST_CHECK_THROW(decompose_objectives({}, {}, {}, "weighted"), std::invalid_argument);
+}
+
+BOOST_AUTO_TEST_CASE(nsga2_pareto_fronts_test)
+{
+    namespace rng = std::ranges;
+    namespace  fs = std::filesystem;
+
+    std::ifstream f1("./tmp/nsga2_DTLZ2_20000_2_ms.csv");
+    std::string line;
+
+    auto const n = 20000;
+    auto const m = 2;
+    char* end{};
+    std::vector<std::vector<vector_double>> generations;
+    while(std::getline(f1, line)) {
+        vector_double p;
+        std::vector<vector_double> points;
+        for (auto v : std::views::split(line, ',')) {
+            auto u = std::strtod(v.data(), &end);
+            p.push_back(u);
+            if (p.size() == m) {
+                points.push_back(p);
+                p.clear();
+            }
+        }
+        if (n != points.size()) {
+            throw std::runtime_error("incorrect parsing");
+        }
+        generations.push_back(points);
+    }
+    for (auto const& points : generations) {
+        auto retval = non_dominated_sorting(points, non_dominated_sorting_algorithm_type::rank_intersect_sort);
+        auto const& fronts = std::get<0>(retval);
+        std::cout << "number of fronts: " << fronts.size() << "\n";
+    }
 }
