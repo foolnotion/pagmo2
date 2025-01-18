@@ -195,9 +195,8 @@ population nsga2::evolve(population pop) const
         }
 
         // 1 - We compute crowding distance and non dominated rank for the current population
-        auto fnds_res = non_dominated_sorting(pop.get_f(), m_sorting_algorithm, true);
+        auto fnds_res = non_dominated_sorting(pop.get_f(), m_sorting_algorithm, /*dominate_on_equal=*/true);
         auto ndf = std::get<0>(fnds_res); // non dominated fronts [[0,3,2],[1,5,6],[4],...]
-        std::cout << "number of fronts: " << ndf.size() << "\n";
         vector_double pop_cd(NP);         // crowding distances of the whole population
         auto ndr = std::get<3>(fnds_res); // non domination rank [0,1,0,0,2,1,1, ... ]
         for (const auto &front_idxs : ndf) {

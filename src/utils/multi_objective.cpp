@@ -140,7 +140,7 @@ PAGMO_DLL_PUBLIC fnds_return_type non_dominated_sorting(std::span<vector_double 
     auto const n{ std::ssize(points) };
 
     std::vector<int> indices(n);
-    std::iota(indices.begin(), indices.end(), 0ul);
+    std::iota(indices.begin(), indices.end(), 0UL);
 
     auto compare = [&](auto i, auto j) {
         return std::ranges::lexicographical_compare(points[i], points[j], std::ref(detail::less_than_f<vector_double::value_type>));
@@ -163,12 +163,11 @@ PAGMO_DLL_PUBLIC fnds_return_type non_dominated_sorting(std::span<vector_double 
         for (; j < indices.end(); ++j) {
             auto const& b = points[*j];
             if (!equal(a, b)) { break; }
-            duplicates[*j] = *i;
+            duplicates[*j] = *i; // j is a duplicate of i
             counts[*i] += 1;
         }
         i = j;
     }
-    std::cout << "unique size: " << unique.size() << "\n";
     std::vector<vector_double> pop;
     pop.reserve(unique.size());
 
