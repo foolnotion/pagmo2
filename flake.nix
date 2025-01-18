@@ -26,7 +26,7 @@
 
           cmakeFlags = [
             "-DBUILD_SHARED_LIBS=${if pkgs.stdenv.hostPlatform.isStatic then "OFF" else "ON"}"
-            "-DPAGMO_BUILD_TESTS=1"
+            "-DPAGMO_BUILD_TESTS=0"
             "-DPAGMO_BUILD_TUTORIALS=OFF"
             "-DPAGMO_WITH_EIGEN3=1"
             "-DPAGMO_WITH_NLOPT=1"
